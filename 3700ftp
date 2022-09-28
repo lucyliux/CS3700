@@ -1,0 +1,35 @@
+#!/usr/bin/env -S python3 -u
+import sys
+import socket
+import json
+
+
+
+# command = sys.argv[1]
+# param1 = sys.argv[2]
+# param2 = sys.argv[3]
+domain = 'ftp.3700.network'
+port = 21
+pasv = False
+# login_message = 'USER liuxinhu\r\n'
+
+msg = ''
+for i in range(1, len(sys.argv)):
+  if (i == len(sys.argv) - 1):
+    msg += (sys.argv[i] + '\r\n')
+  else:
+    msg += (sys.argv[i] + ' ')
+print(msg)
+
+if (pasv):
+  data_channel = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+  data_channel.connect((domain, port))
+
+control_channel = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+control_channel.connect((domain, port))
+response = control_channel.recv(1024).decode()
+print(response)
+control_channel.sendall(msg.encode('utf-8'))
+print(control_channel.recv(1024).decode())
+
+# check messages are terminated with /r/n
