@@ -2,34 +2,83 @@
 import sys
 import socket
 import json
+import argparse
+from urllib.parse import urlparse
 
 
-
-# command = sys.argv[1]
-# param1 = sys.argv[2]
-# param2 = sys.argv[3]
-domain = 'ftp.3700.network'
+username = 'anonymous'
+password = ''
+host = ''
 port = 21
-pasv = False
-# login_message = 'USER liuxinhu\r\n'
+cmd = ''
+if len(sys.argv) == 3:
+  cmd = sys.argv[1]
+  parsedURL = urlparse(sys.argv[2])
+  username = parsedURL.username
+  password = parsedURL.password
+  host = parsedURL.hostname
+  port = parsedURL.port
+  path = parsedURL.path
+elif len(sys.argv) == 4:
+  print()
+else:
+  raise Exception('args')
 
-msg = ''
-for i in range(1, len(sys.argv)):
-  if (i == len(sys.argv) - 1):
-    msg += (sys.argv[i] + '\r\n')
-  else:
-    msg += (sys.argv[i] + ' ')
-print(msg)
-
-if (pasv):
+def send(msg, sock):
+  sock.sendall((msg + '\r\n').encode())
+  
+def receive(sock):
+  response = sock.recv(1024).decode()
+  while not response.endswith('\r\n'):
+    response += sock.recv(1024).decode()
+  return response
+  
+def connect_data_channel(msg):
+  nums = (msg.split('('))[1].split(')')[0].split(',')
+  ip = nums[0] + nums[1] + nums[2] + nums[3]
+  port = (int(nums[4]) << 8) + int(nums[5])
   data_channel = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-  data_channel.connect((domain, port))
+  data_channel.connect((host, port))
+  return data_channel
+
 
 control_channel = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-control_channel.connect((domain, port))
-response = control_channel.recv(1024).decode()
-print(response)
-control_channel.sendall(msg.encode('utf-8'))
-print(control_channel.recv(1024).decode())
+control_channel.connect((host, port))
+control_channel.settimeout(60)
+print(receive(control_channel))
+
+# login
+# send username
+send('USER ' + username, control_channel)
+print(receive(control_channel))
+# send password
+send('PASS ' + password, control_channel)
+print(receive(control_channel))
+
+if cmd == 'ls':
+  send('PASV', control_channel)
+  response = receive(control_channel)
+  print(response)
+  data_channel = connect_data_channel(response)
+  send('LIST ' + path, control_channel)
+  print(receive(control_channel))
+elif cmd == 'mkdir':
+  send('MKD ' + path, control_channel)
+  print(receive(control_channel))
+elif cmd == 'rm':
+  send('DELE ' + path, control_channel)
+  print(receive(control_channel))
+elif cmd == 'rmdir':
+  send('RMD ' + path, control_channel)
+  print(receive(control_channel))
+elif cmd == 'cp':
+  print()
+elif cmd == 'mv':
+  print()
 
 # check messages are terminated with /r/n
+
+
+
+# close the socket
+control_channel.close()
