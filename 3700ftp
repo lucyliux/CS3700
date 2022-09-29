@@ -13,7 +13,7 @@ cmd = ''
 url = ''
 dir = ''
 cmd = sys.argv[1]
-upload = True
+isupload = True
 if len(sys.argv) == 3:
   url = sys.argv[2]
 elif len(sys.argv) == 4:
@@ -21,7 +21,7 @@ elif len(sys.argv) == 4:
   if sys.argv[2].startswith('ftp://'):
     url = sys.argv[2]
     dir = sys.argv[3]
-    upload = False
+    isupload = False
     print('falllse')
   else:
     url = sys.argv[3]
@@ -51,6 +51,7 @@ def receive(sock):
     print('More action required')
   elif response.startswith('4') or response.startswith('5') or response.startswith('6'):
     print('error')
+    send('QUIT', control_channel)
     sock.close()
   return response
   
@@ -121,7 +122,7 @@ elif cmd == 'rmdir':
 elif cmd == 'cp':
   data_channel = connect_data_channel()
   data_transfer_setup(control_channel)
-  if upload == True:
+  if isupload == True:
     print('upload')
     upload(control_channel, data_channel)
   else:
@@ -130,10 +131,13 @@ elif cmd == 'cp':
 elif cmd == 'mv':
   data_channel = connect_data_channel()
   data_transfer_setup(control_channel)
-  if upload == True:
+  if isupload == True:
+    print('upload')
     upload(control_channel, data_channel)
     os.remove(dir)
   else:
+    print(isupload)
+    print('haha')
     download(control_channel, data_channel)
     send('DELE ' + path, control_channel)
     print(receive(control_channel))
