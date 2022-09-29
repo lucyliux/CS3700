@@ -4,7 +4,6 @@ import socket
 from urllib.parse import urlparse
 import os
 
-print('hahahaha')
 username = 'anonymous'
 password = ''
 host = 'ftp.3700.network'
@@ -15,9 +14,10 @@ dir = ''
 cmd = sys.argv[1]
 isUpload = True
 if len(sys.argv) == 3:
+  print('len 3')
   url = sys.argv[2]
 elif len(sys.argv) == 4:
-  print()
+  print('len 4')
   if sys.argv[2].startswith('ftp://'):
     url = sys.argv[2]
     dir = sys.argv[3]
@@ -35,7 +35,11 @@ password = parsedURL.password
 host = parsedURL.hostname
 port = parsedURL.port
 path = parsedURL.path
-  
+print(username)
+print(password)
+print(host)
+print(path)
+
 def send(msg, sock):
   sock.sendall((msg + '\r\n').encode())
   
