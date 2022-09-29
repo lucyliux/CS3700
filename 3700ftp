@@ -110,6 +110,7 @@ send('PASS ' + password, control_channel)
 print(receive(control_channel))
 
 if cmd == 'ls':
+  print('hahahah')
   data_channel = connect_data_channel()
   send('LIST ' + path, control_channel)
   print(receive(control_channel))
