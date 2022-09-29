@@ -1,29 +1,41 @@
 #!/usr/bin/env python3
 import sys
 import socket
-import json
-import argparse
 from urllib.parse import urlparse
+import os
 
 
 username = 'anonymous'
 password = ''
-host = ''
+host = 'ftp.3700.network'
 port = 21
 cmd = ''
+url = ''
+dir = ''
+cmd = sys.argv[1]
+upload = True
 if len(sys.argv) == 3:
-  cmd = sys.argv[1]
-  parsedURL = urlparse(sys.argv[2])
-  username = parsedURL.username
-  password = parsedURL.password
-  host = parsedURL.hostname
-  port = parsedURL.port
-  path = parsedURL.path
+  url = sys.argv[2]
 elif len(sys.argv) == 4:
   print()
+  if sys.argv[2].startswith('ftp://'):
+    url = sys.argv[2]
+    dir = sys.argv[3]
+    upload = False
+    print('falllse')
+  else:
+    url = sys.argv[3]
+    dir = sys.argv[2]
 else:
-  raise Exception('args')
+  raise Exception('Invalid number of arguments')
 
+parsedURL = urlparse(url)
+username = parsedURL.username
+password = parsedURL.password
+host = parsedURL.hostname
+port = parsedURL.port
+path = parsedURL.path
+  
 def send(msg, sock):
   sock.sendall((msg + '\r\n').encode())
   
@@ -31,17 +43,53 @@ def receive(sock):
   response = sock.recv(1024).decode()
   while not response.endswith('\r\n'):
     response += sock.recv(1024).decode()
+  if response.startswith('1'):
+    print('More action expected')
+  elif response.startswith('2'):
+    print('success')
+  elif response.startswith('3'):
+    print('More action required')
+  elif response.startswith('4') or response.startswith('5') or response.startswith('6'):
+    print('error')
+    sock.close()
   return response
   
-def connect_data_channel(msg):
-  nums = (msg.split('('))[1].split(')')[0].split(',')
+def connect_data_channel():
+  send('PASV', control_channel)
+  response = receive(control_channel)
+  print(response)
+  nums = (response.split('('))[1].split(')')[0].split(',')
   ip = nums[0] + nums[1] + nums[2] + nums[3]
   port = (int(nums[4]) << 8) + int(nums[5])
   data_channel = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
   data_channel.connect((host, port))
   return data_channel
 
-
+def data_transfer_setup(sock):
+  send('TYPE I', sock)
+  print(receive(sock))
+  send('MODE S', sock)
+  print(receive(sock))
+  send('STRU F', sock)
+  print(receive(sock))
+  
+def upload(control, data):
+  send('STOR ' + dir, control)
+  print(receive(control))
+  file = open(dir, "r").read()
+  send(file, data)
+  data.close()
+  print(receive(control))
+    
+def download(control, data):
+  send('RETR ' + path, control)
+  print(receive(control))
+  response = receive(data)
+  data.close()
+  print(response)
+  file = open(path.split('/')[-1], "w+")
+  file.write(response)
+    
 control_channel = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 control_channel.connect((host, port))
 control_channel.settimeout(60)
@@ -56,12 +104,11 @@ send('PASS ' + password, control_channel)
 print(receive(control_channel))
 
 if cmd == 'ls':
-  send('PASV', control_channel)
-  response = receive(control_channel)
-  print(response)
-  data_channel = connect_data_channel(response)
+  data_channel = connect_data_channel()
   send('LIST ' + path, control_channel)
   print(receive(control_channel))
+  print(receive(data_channel))
+  data_channel.close()
 elif cmd == 'mkdir':
   send('MKD ' + path, control_channel)
   print(receive(control_channel))
@@ -72,12 +119,27 @@ elif cmd == 'rmdir':
   send('RMD ' + path, control_channel)
   print(receive(control_channel))
 elif cmd == 'cp':
-  print()
+  data_channel = connect_data_channel()
+  data_transfer_setup(control_channel)
+  if upload == True:
+    print('upload')
+    upload(control_channel, data_channel)
+  else:
+    print('download')
+    download(control_channel, data_channel)
 elif cmd == 'mv':
-  print()
+  data_channel = connect_data_channel()
+  data_transfer_setup(control_channel)
+  if upload == True:
+    upload(control_channel, data_channel)
+    os.remove(dir)
+  else:
+    download(control_channel, data_channel)
+    send('DELE ' + path, control_channel)
+    print(receive(control_channel))
+    
 
-# check messages are terminated with /r/n
-
+# when response doesn't have terminating symbol
 
 
 # close the socket
