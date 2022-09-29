@@ -116,7 +116,7 @@ if cmd == 'ls':
   print(receive(data_channel))
   data_channel.close()
 elif cmd == 'mkdir':
-  print('mkdir')
+  print('mkdirrrrrrrr')
   send('MKD ' + path, control_channel)
   print(receive(control_channel))
 elif cmd == 'rm':
