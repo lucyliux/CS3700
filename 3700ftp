@@ -97,17 +97,25 @@ def download(control, data):
   file.write(response)
     
 control_channel = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+print('1')
 control_channel.connect((host, port))
+print('2')
 control_channel.settimeout(60)
+print('3')
 print(receive(control_channel))
+print('4')
 
 # login
 # send username
 send('USER ' + username, control_channel)
+print('5')
 print(receive(control_channel))
+print('6')
 # send password
 send('PASS ' + password, control_channel)
+print('7')
 print(receive(control_channel))
+print('8')
 
 print('lalalala')
 if cmd == 'ls':
