@@ -109,6 +109,7 @@ print(receive(control_channel))
 send('PASS ' + password, control_channel)
 print(receive(control_channel))
 
+print('lalalala')
 if cmd == 'ls':
   print('hahahah')
   data_channel = connect_data_channel()
