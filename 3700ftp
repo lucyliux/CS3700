@@ -39,6 +39,7 @@ print(username)
 print(password)
 print(host)
 print(path)
+print(cmd)
 
 def send(msg, sock):
   sock.sendall((msg + '\r\n').encode())
@@ -115,6 +116,7 @@ if cmd == 'ls':
   print(receive(data_channel))
   data_channel.close()
 elif cmd == 'mkdir':
+  print('mkdir')
   send('MKD ' + path, control_channel)
   print(receive(control_channel))
 elif cmd == 'rm':
