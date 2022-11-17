@@ -1,0 +1,242 @@
+#!/usr/bin/env python3
+
+import argparse
+from collections import deque
+import socket
+import ssl
+from urllib.parse import urlparse
+from html.parser import HTMLParser
+import threading
+
+DEFAULT_SERVER = "proj5.3700.network"
+DEFAULT_PORT = 443
+buffered = deque()
+visited = set()
+found_flags = []
+
+class MyHTMLParser(HTMLParser):
+    def __init__(self, server, port):
+        HTMLParser.__init__(self)
+        self.server = server
+        self.port = port
+        
+        
+    def handle_starttag(self, tag, attrs):
+        global buffered
+        if tag == "a":
+            for key, value in attrs:
+                if key == "href" and value.startswith("/"):
+                    url = "https://%s:%d%s" % (self.server, self.port, value)
+                    if url not in visited and url not in buffered:
+                        buffered.append(url)
+                        # print("Saving: %s" %url)
+
+    def handle_data(self, data):
+      global found_flags
+      if "FLAG: " in data:
+          flag = data.split(": ")[1]
+          found_flags.append(flag)
+          # print("flag: %s" %flag)
+          print(flag)
+            
+class Crawler:
+    def __init__(self, args):
+        self.server = args.server
+        self.port = args.port
+        self.username = args.username
+        self.password = args.password
+        self.csrfToken = None
+        self.sessionId = None
+        
+    def login(self, url):
+        get_response = self.http_get(url)
+        if get_response: 
+            post_response = self.http_post(url)
+            return post_response
+          
+    def get_cookies(self):
+      cookies = {}
+      if self.csrfToken is not None:
+          cookies["csrftoken"] = self.csrfToken
+      if self.sessionId is not None:
+          cookies["sessionid"] = self.sessionId
+      return cookies
+    
+    def send_request(self, request, url):
+        # print("Sending request to: %s" %url)
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        mysocket = ssl.wrap_socket(s)
+        mysocket.connect((self.server, self.port))
+        
+        mysocket.send(request.encode('utf-8'))
+        response = ''
+        data = mysocket.recv(1000)
+        response += data.decode('utf-8')
+        while data != b'':
+            # print(mysocket._closed)
+            data = mysocket.recv(1000)
+            response += data.decode('utf-8')
+        mysocket.close()
+        if response:
+          processed = self.process_response(response)
+          return self.handle_status_code(processed, url)
+          
+    def process_response(self, get_response):
+        response = {}
+        split = get_response.split('\r\n\r\n')
+        headers = split[0].split('\r\n')
+        status_code = headers[0].split(' ')[1]
+        response["status"] = status_code.strip()
+        if len(split) > 1:
+            body = split[1]         
+            response["body"] = body   
+        for header in headers[1:]:
+            (key, value) = header.split(":", 1)
+            if key == "Set-Cookie":
+                type = value.strip().split(";", 1)[0].split("=")[0]
+                token = value.split(";", 1)[0].split("=")[1]
+                if type == "csrftoken":
+                    self.csrfToken = token
+                    # print(self.csrfToken)
+                if type == "sessionid":
+                    self.sessionId = token
+                    # print(self.sessionId)
+            if key == "Location":
+                response["location"] = value.strip()
+        return response
+      
+    def http_get(self, url):
+        global visited
+        request = ''
+        parsed = urlparse(url)
+        visited.add(url)
+        if url in buffered:
+          buffered.remove(url)
+        if parsed.hostname == self.server and parsed.port == self.port:
+          initial_request_line = "GET %s HTTP/1.1\r\n" %parsed.path
+          request += initial_request_line
+          request += "Host: %s\r\n" %self.server
+          # request += "Connection: Keep-Alive\r\n"
+          request += "Connection: Close\r\n"
+        #   request += "Accept-Encoding: gzip\r\n"
+          cookie_line = self.get_cookie_line()
+          if cookie_line != "":
+            request += "%s\r\n" %cookie_line
+          request += "\r\n"
+          return self.send_request(request, url)
+
+    def http_post(self, url):
+        visited.add(url)
+        request = ''
+        content = "username=%s&password=%s&csrfmiddlewaretoken=%s&next=%s" %(self.username, self.password, self.csrfToken, "%2Ffakebook%2F")
+        # initial request line
+        request += "POST /accounts/login/?next=/fakebook/ HTTP/1.1\r\n"
+        # host line
+        request += "Host: %s\r\n" %self.server
+        request += "Connection: Close\r\n"
+        # content type
+        request += "Content-Type: application/x-www-form-urlencoded\r\n"
+        # content length
+        request += "Content-Length: %d\r\n" %len(content)
+        # cookie line
+        if len(self.get_cookie_line()) > 0:
+          request += self.get_cookie_line() + "\r\n"
+        request += "\r\n"
+        request += content
+        return self.send_request(request, url)
+          
+    def get_cookie_line(self):
+      cookie = ''
+      if self.csrfToken is not None:
+          cookie += 'csrftoken=%s' %self.csrfToken
+      if self.sessionId is not None:
+          cookie += '; sessionid=%s' %self.sessionId
+      if cookie == '':
+          return ''
+      else:
+          return 'Cookie: %s' %cookie 
+    
+    def handle_status_code(self, response, url):
+      global visited
+      status_code = response["status"]
+      if status_code == "200":
+        # print(200)
+        return response
+      elif status_code == "302":
+        # print(302)
+        # retry request with new url given by server in Location header
+        old_parsed = urlparse(url)
+        # new_url = urlunparse(old_parsed.scheme, old_parsed.netloc, response["location"])
+        new_url = old_parsed.scheme + "://" + old_parsed.netloc + response["location"]
+        # if new_url not in visited:
+        # print("Redirected from %s to %s" %(url, new_url))
+        buffered.appendleft(new_url)
+      elif status_code == "403" or status_code == "404":
+        # print(403)
+        # abandon url
+        return None
+      elif status_code == "503":
+        # retry
+        buffered.appendleft(url)
+        # print(503)
+        return None
+      elif status_code == "500":
+        print("Contact course staff")
+    
+    def crawl(self, parser):
+        global buffered
+        # print("Buffered: %s" %str(buffered))
+        # print("Visited: %s" %str(visited))
+        if len(buffered) > 0:
+          url = buffered.pop()
+          response = self.http_get(url)
+          if response and response["status"] == "200":
+              body = response["body"]
+              # for line in body.split('\n'):
+                  # if "class='secret_flag'" in line:
+                      # print("found flag")
+              # print(body)
+              parser.feed(body)
+              
+    def run(self):
+        global found_flags
+        login_url = "https://%s:%d/accounts/login/?next=/fakebook/" % (self.server, self.port)
+        self.login(login_url)
+        parser1 = MyHTMLParser(self.server, self.port)
+        parser2 = MyHTMLParser(self.server, self.port)
+        parser3 = MyHTMLParser(self.server, self.port)
+        parser4 = MyHTMLParser(self.server, self.port)
+        parser5 = MyHTMLParser(self.server, self.port)
+        while len(found_flags) < 5:
+          print(len(visited))
+          # self.crawl(parser)
+          t1 = threading.Thread(target=self.crawl, args=(parser1,))
+          t2 = threading.Thread(target=self.crawl, args=(parser2,))
+          t3 = threading.Thread(target=self.crawl, args=(parser3,))
+          t4 = threading.Thread(target=self.crawl, args=(parser4,))
+          t5 = threading.Thread(target=self.crawl, args=(parser5,))
+          # starting thread 1
+          t1.start()
+          # starting thread 2
+          t2.start()
+          t3.start()
+          t4.start()
+          t5.start()
+          # wait until thread 1 is completely executed
+          t1.join()
+          # wait until thread 2 is completely executed
+          t2.join()
+          t3.join()
+          t4.join()
+          t5.join()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='crawl Fakebook')
+    parser.add_argument('-s', dest="server", type=str, default=DEFAULT_SERVER, help="The server to crawl")
+    parser.add_argument('-p', dest="port", type=int, default=DEFAULT_PORT, help="The port to use")
+    parser.add_argument('username', type=str, help="The username to use")
+    parser.add_argument('password', type=str, help="The password to use")
+    args = parser.parse_args()
+    sender = Crawler(args)
+    sender.run()
